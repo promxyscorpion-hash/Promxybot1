@@ -1,18 +1,36 @@
-const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys')
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth')
     const sock = makeWASocket({ auth: state, printQRInTerminal: false })
     sock.ev.on('creds.update', saveCreds)
 
-    if (!sock.authState.creds.registered) {
-        // 👇 PUT YOUR SECOND WHATSAPP NUMBER HERE
-        // Example: if number is 08123456789, put 2348123456789
-        const phoneNumber = "2349163060217"
-        const code = await sock.requestPairingCode(phoneNumber)
-        console.log("YOUR PAIRING CODE IS: " + code)
-        console.log("Go to WhatsApp > Linked Devices > Link with phone number, enter this code")
-    }
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update
+
+        // If not registered, ask for pairing code AFTER connection opens
+        if (connection === 'open') {
+            console.log("Connected to WhatsApp!")
+        }
+
+        if (connection === 'close') {
+            console.log("Connection closed, restarting...")
+            startBot()
+        }
+    })
+
+    // Wait 3 seconds for WhatsApp to be ready, then ask for code
+    setTimeout(async () => {
+        if (!sock.authState.creds.registered) {
+            try {
+                const phoneNumber = "2349163060217" // <-- PUT YOUR REAL NUMBER HERE AGAIN
+                const code = await sock.requestPairingCode(phoneNumber)
+                console.log("YOUR PAIRING CODE IS: " + code)
+            } catch (e) {
+                console.log("Failed to get code, retrying...", e.message)
+            }
+        }
+    }, 3000)
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0]
